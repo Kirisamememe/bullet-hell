@@ -5,6 +5,10 @@ import { HUD } from '../ui/HUD';
 import { TitleScreen } from '../ui/TitleScreen';
 import { Stage } from '../stages/Stage';
 import { Stage1 } from '../stages/Stage1';
+import { Stage2 } from '../stages/Stage2';
+import { Stage3 } from '../stages/Stage3';
+import { Stage4 } from '../stages/Stage4';
+import { Stage5 } from '../stages/Stage5';
 import { drawPixelText } from '../render/sprites';
 import { checkPlayerCollisions, checkEnemyCollisions, checkGraze } from '../systems/Collision';
 
@@ -91,7 +95,14 @@ export class Game {
 
   private startStage(stageNum: number): void {
     this.currentStage = stageNum;
-    this.currentStageInstance = new Stage1(); // TODO: wire stages 2-5 in Task 14
+    switch (stageNum) {
+      case 1: this.currentStageInstance = new Stage1(); break;
+      case 2: this.currentStageInstance = new Stage2(); break;
+      case 3: this.currentStageInstance = new Stage3(); break;
+      case 4: this.currentStageInstance = new Stage4(); break;
+      case 5: this.currentStageInstance = new Stage5(); break;
+      default: this.currentStageInstance = new Stage1(); break;
+    }
     this.player = new Player();
     this.scene = Scene.StageIntro;
     this.transitionTimer = 2000;
