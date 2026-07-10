@@ -10,6 +10,9 @@ dist
 coverage
 *.lcov
 
+# Playwright test artifacts
+.playwright-mcp
+
 # logs
 logs
 _.log
