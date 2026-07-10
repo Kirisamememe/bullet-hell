@@ -135,7 +135,7 @@ export class Game {
     switch (this.scene) {
       case Scene.Title:
         this.titleScreen.update(dt);
-        if (this.input.state.shot) {
+        if (this.input.consumeShot()) {
           this.score = 0;
           this.lives = 3;
           this.bombs = 3;
@@ -174,14 +174,14 @@ export class Game {
       case Scene.GameOver:
         this.transitionTimer -= dt;
         if (this.transitionTimer <= 0) {
-          if (this.input.state.shot) {
+          if (this.input.consumeShot()) {
             this.lives = 3;
             this.bombs = 3;
             this.power = 1;
             this.continueCount++;
             this.startStage(this.currentStage);
           }
-          if (this.input.state.bomb) {
+          if (this.input.consumeBomb()) {
             this.saveHiScore();
             this.scene = Scene.Title;
           }

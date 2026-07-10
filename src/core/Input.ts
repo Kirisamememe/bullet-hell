@@ -23,6 +23,10 @@ export class Input {
 
   private pauseConsumed = false;
   private bombConsumed = false;
+  private tapX = 0;
+  private tapY = 0;
+  private tapPending = false;
+  private shotConsumed = false;
 
   constructor(canvas: HTMLCanvasElement) {
     window.addEventListener('keydown', (e) => this.onKey(e, true));
@@ -55,6 +59,10 @@ export class Input {
     this.state.touchActive = true;
     this.state.touchX = touch.clientX;
     this.state.touchY = touch.clientY;
+    // Register tap
+    this.tapX = touch.clientX;
+    this.tapY = touch.clientY;
+    this.tapPending = true;
   }
 
   private onTouchMove(e: TouchEvent): void {
@@ -84,7 +92,7 @@ export class Input {
     return false;
   }
 
-  /** Returns true once per bomb press, then false until pressed again. */
+  /** Returns true once per bomb press (key or touch button), then false until pressed again. */
   consumeBomb(): boolean {
     if ((this.state.bomb || this.state.bombButtonPressed) && !this.bombConsumed) {
       this.bombConsumed = true;
@@ -94,5 +102,29 @@ export class Input {
       this.bombConsumed = false;
     }
     return false;
+  }
+
+  /** Returns true once per shot press (Z key or tap), then false until pressed again. */
+  consumeShot(): boolean {
+    const wantsShot = this.state.shot || this.tapPending;
+    if (wantsShot && !this.shotConsumed) {
+      this.shotConsumed = true;
+      this.tapPending = false;
+      return true;
+    }
+    if (!this.state.shot && !this.tapPending) {
+      this.shotConsumed = false;
+    }
+    return false;
+  }
+
+  /** Returns tap position if a new tap just occurred, null otherwise. Consumed once. */
+  consumeTap(): { x: number; y: number } | null {
+    if (this.tapPending && !this.shotConsumed) {
+      this.shotConsumed = true;
+      this.tapPending = false;
+      return { x: this.tapX, y: this.tapY };
+    }
+    return null;
   }
 }

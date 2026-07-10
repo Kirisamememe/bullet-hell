@@ -72,9 +72,10 @@ export class TitleScreen {
     drawPixelText(ctx, 'RENGO', cx(5, 2), 185, '#ff4444', 2);
     drawPixelText(ctx, '弾 幕 煉 獄', cx(7), 225, '#ff8844', 1);
 
-    // === Press start (centered) ===
+    // === Start prompt (centered) ===
     if (this.showPressStart) {
-      drawPixelText(ctx, 'PRESS Z TO START', cx(17), 390, '#ffffff', 1);
+      drawPixelText(ctx, 'PRESS Z OR TAP', cx(16), 390, '#ffffff', 1);
+      drawPixelText(ctx, 'TO START', cx(8), 406, '#aaaaaa', 1);
     }
 
     // === Controls box (centered) ===
