@@ -79,21 +79,23 @@ export class TitleScreen {
     }
 
     // === Controls box (centered) ===
-    const ctrlY = 510;
-    const ctrlW = 220, ctrlH = 58;
+    const ctrlY = 488;
+    const ctrlW = 244, ctrlH = 112;
     const ctrlX = (W - ctrlW) / 2;
     ctx.fillStyle = 'rgba(255,255,255,0.05)';
-    ctx.fillRect(ctrlX, ctrlY - 12, ctrlW, ctrlH);
+    ctx.fillRect(ctrlX, ctrlY - 12, ctrlW, ctrlH + 4);
     ctx.fillStyle = 'rgba(255,255,255,0.08)';
-    ctx.fillRect(ctrlX + 2, ctrlY - 10, ctrlW - 4, ctrlH - 4);
+    ctx.fillRect(ctrlX + 2, ctrlY - 10, ctrlW - 4, ctrlH);
 
-    const col1 = ctrlX + 12;
-    const col2 = ctrlX + 106;
-    drawPixelText(ctx, 'ARROWS / WASD', col1, ctrlY, '#aaaacc', 1);
-    drawPixelText(ctx, 'Z : SHOT',   col2, ctrlY, '#ffcc88', 1);
-    drawPixelText(ctx, 'X : BOMB',   col1, ctrlY + 16, '#ffcc88', 1);
-    drawPixelText(ctx, 'SHIFT : SLOW', col2, ctrlY + 16, '#ffcc88', 1);
-    drawPixelText(ctx, 'ESC : PAUSE', col1, ctrlY + 32, '#aaaacc', 1);
+    const L = ctrlX + 10;
+    drawPixelText(ctx, '[ KEYBOARD ]', L + 4, ctrlY, '#8888aa', 1);
+    drawPixelText(ctx, 'MOVE : ARROWS / WASD', L, ctrlY + 14, '#aaaacc', 1);
+    drawPixelText(ctx, 'SHOT : Z              BOMB : X',  L, ctrlY + 28, '#ffcc88', 1);
+    drawPixelText(ctx, 'SLOW : SHIFT     PAUSE : ESC', L, ctrlY + 42, '#ffcc88', 1);
+
+    drawPixelText(ctx, '[ TOUCH ]', L + 4, ctrlY + 62, '#8888aa', 1);
+    drawPixelText(ctx, 'DRAG    : MOVE + AUTO-SHOT', L, ctrlY + 76, '#88ccff', 1);
+    drawPixelText(ctx, 'TAP [B] : BOMB', L, ctrlY + 90, '#88ccff', 1);
 
     // === Footer (centered) ===
     drawPixelText(ctx, '(C) 2026  DANMA RENGO', cx(22), 620, '#555566', 1);

@@ -57,6 +57,10 @@ export class Game {
   private transitionTimer = 0;
   private stageClearTimer = 0;
 
+  // Bomb effect
+  private bombFlash = 0;       // screen flash timer (ms)
+  private bombRing = 0;        // expanding ring radius
+
   constructor(canvas: CanvasManager) {
     this.canvas = canvas;
     this.input = new Input(canvas.canvas);
@@ -174,16 +178,33 @@ export class Game {
       case Scene.GameOver:
         this.transitionTimer -= dt;
         if (this.transitionTimer <= 0) {
-          if (this.input.consumeShot()) {
-            this.lives = 3;
-            this.bombs = 3;
-            this.power = 1;
-            this.continueCount++;
-            this.startStage(this.currentStage);
-          }
-          if (this.input.consumeBomb()) {
-            this.saveHiScore();
-            this.scene = Scene.Title;
+          // Tap position-based action (touch-first, won't conflict with keyboard)
+          const tap = this.input.consumeTap();
+          if (tap) {
+            // Upper 65% of screen → continue, lower 35% → title
+            if (tap.y < HEIGHT * 0.65) {
+              this.lives = 3;
+              this.bombs = 3;
+              this.power = 1;
+              this.continueCount++;
+              this.startStage(this.currentStage);
+            } else {
+              this.saveHiScore();
+              this.scene = Scene.Title;
+            }
+          } else {
+            // Keyboard fallback
+            if (this.input.consumeShot()) {
+              this.lives = 3;
+              this.bombs = 3;
+              this.power = 1;
+              this.continueCount++;
+              this.startStage(this.currentStage);
+            }
+            if (this.input.consumeBomb()) {
+              this.saveHiScore();
+              this.scene = Scene.Title;
+            }
           }
         }
         break;
@@ -194,6 +215,21 @@ export class Game {
     // Background
     this.background.update(dt);
     this.particles.update(dt);
+
+    // Bomb effect timers
+    if (this.bombFlash > 0) {
+      this.bombFlash -= dt;
+      this.bombRing += dt * 0.8; // ring expands
+    }
+
+    // Touch bomb button: tap in bottom-left corner triggers bomb
+    const tap = this.input.consumeTap();
+    if (tap) {
+      const gp = this.canvas.screenToGame(tap.x, tap.y);
+      if (gp.x >= 6 && gp.x <= 44 && gp.y >= HEIGHT - 44 && gp.y <= HEIGHT - 6) {
+        this.input.state.bombButtonPressed = true;
+      }
+    }
 
     // Player input
     this.player.handleInput(
@@ -214,11 +250,23 @@ export class Game {
     if (this.input.consumeBomb() && this.bombs > 0) {
       this.bombs--;
       this.player.useBomb();
+      // Clear all enemy bullets
       for (const b of this.currentStageInstance.enemyBullets) {
         b.active = false;
       }
-      this.particles.emit(180, 320, 30, '#ffffff', 6, 600);
+      // Damage all enemies on screen
+      for (const enemy of this.currentStageInstance.enemies) {
+        if (enemy.active) enemy.takeDamage(30);
+      }
+      // Spectacular effects
+      this.bombFlash = 400;
+      this.bombRing = 0;
+      this.particles.emit(180, 320, 60, '#ffffff', 8, 700);
+      this.particles.emit(180, 320, 40, '#ffcc44', 10, 500);
+      this.particles.emit(180, 320, 20, '#ff6622', 12, 400);
     }
+    // Reset touch bomb flag after processing
+    this.input.state.bombButtonPressed = false;
 
     // Update player
     this.player.update(dt);
@@ -332,6 +380,22 @@ export class Game {
     // Parallax background
     this.background.render(ctx, stage.themeColor);
 
+    // Bomb expanding ring (behind entities)
+    if (this.bombRing > 0 && this.bombFlash > 0) {
+      const alpha = this.bombFlash / 400;
+      ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(180, 320, this.bombRing, 0, Math.PI * 2);
+      ctx.stroke();
+      // Inner glow
+      ctx.strokeStyle = `rgba(255, 200, 100, ${alpha * 0.6})`;
+      ctx.lineWidth = 12;
+      ctx.beginPath();
+      ctx.arc(180, 320, Math.max(0, this.bombRing - 20), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
     // Particles (behind entities)
     this.particles.render(ctx);
 
@@ -352,6 +416,25 @@ export class Game {
 
     // Player
     this.player.render(ctx);
+
+    // Touch bomb button (bottom-left corner)
+    {
+      const bx = 6, by = HEIGHT - 44;
+      ctx.fillStyle = 'rgba(255, 200, 50, 0.18)';
+      ctx.fillRect(bx, by, 38, 38);
+      ctx.strokeStyle = 'rgba(255, 200, 50, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bx, by, 38, 38);
+      drawPixelText(ctx, 'B', bx + 16, by + 8, '#ffcc00', 1);
+      drawPixelText(ctx, 'BOMB', bx + 7, by + 22, '#ffcc0077', 1);
+    }
+
+    // Bomb screen flash overlay
+    if (this.bombFlash > 0) {
+      const alpha = (this.bombFlash / 400) * 0.5;
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    }
 
     // HUD
     this.hud.render(ctx, this);
@@ -389,7 +472,12 @@ export class Game {
       drawPixelText(ctx, 'NEW RECORD!', cx(11), 330, '#ffcc00', 1);
     }
 
-    drawPixelText(ctx, 'Z - CONTINUE', cx(12), 395, '#ffffff', 1);
-    drawPixelText(ctx, 'X - TITLE', cx(9), 420, '#ffffff', 1);
+    // Divider between continue/title tap zones
+    const divY = Math.floor(HEIGHT * 0.65);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.fillRect(40, divY, WIDTH - 80, 1);
+
+    drawPixelText(ctx, 'TAP / Z - CONTINUE', cx(19), 385, '#ffffff', 1);
+    drawPixelText(ctx, 'TAP LOWER / X - TITLE', cx(22), 410, '#aaaaaa', 1);
   }
 }

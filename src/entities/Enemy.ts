@@ -17,6 +17,14 @@ export class Enemy extends Entity {
   private movePath?: { x: number; y: number }[];
   private moveTimer = 0;
   private moveIndex = 0;
+  // Post-path horizontal patrol
+  driftSpeed = 0;   // px/s
+  driftRange = 0;   // ±px from anchor
+  private driftDir = 1;
+  private driftAnchor = 0;
+  private driftMin = 0;
+  private driftMax = 0;
+  private pathDone = false;
 
   constructor(
     x: number, y: number,
@@ -84,44 +92,72 @@ export class Enemy extends Entity {
   }
 
   update(dt: number): void {
-    // Flash timer
+    // Flash timer (blink state: on when timer%8 < 4)
     if (this.flashTimer > 0) this.flashTimer -= dt * 60 / 1000;
 
-    // Follow move path
-    if (this.movePath && this.moveIndex < this.movePath.length) {
+    // Follow move path with smooth interpolation
+    if (this.movePath && this.moveIndex < this.movePath.length - 1) {
       this.moveTimer += dt;
-      // Move to next waypoint every 500ms by default (or faster for bosses)
-      const waypointInterval = this.isBoss ? 1000 : 500;
-      const nextIndex = Math.min(
-        Math.floor(this.moveTimer / waypointInterval),
-        this.movePath.length - 1
-      );
-      if (nextIndex !== this.moveIndex) {
-        this.moveIndex = nextIndex;
-        this.x = this.movePath[this.moveIndex].x;
-        this.y = this.movePath[this.moveIndex].y;
+      const interval = this.isBoss ? 1000 : 500;
+      const t = Math.min(this.moveTimer / interval, 1);
+      const from = this.movePath[this.moveIndex];
+      const to = this.movePath[this.moveIndex + 1];
+      this.x = from.x + (to.x - from.x) * t;
+      this.y = from.y + (to.y - from.y) * t;
+      if (t >= 1) {
+        this.moveIndex++;
+        this.moveTimer = 0;
+        if (this.moveIndex >= this.movePath.length - 1) {
+          this.pathDone = true;
+          this.driftAnchor = this.x;
+          this.driftMin = Math.max(8, this.x - this.driftRange);
+          this.driftMax = Math.min(360 - 8 - this.width, this.x + this.driftRange);
+        }
       }
     }
+
+    // Post-path horizontal patrol
+    if (this.pathDone && this.driftSpeed > 0) {
+      this.x += this.driftSpeed * this.driftDir * (dt / 1000);
+      if (this.x <= this.driftMin) {
+        this.x = this.driftMin;
+        this.driftDir = 1;
+      } else if (this.x >= this.driftMax) {
+        this.x = this.driftMax;
+        this.driftDir = -1;
+      }
+    }
+
+    // Clamp to play area
+    this.x = Math.max(4, Math.min(360 - 4 - this.width, this.x));
+    this.y = Math.max(0, Math.min(640 - 4 - this.height, this.y));
   }
 
   render(ctx: CanvasRenderingContext2D): void {
     if (!this.active) return;
 
-    const flashing = this.flashTimer > 0;
+    // Hit flash: rapid blink (toggle every ~80ms)
+    const blinking = this.flashTimer > 0 && Math.floor(this.flashTimer / 4) % 2 === 0;
+
+    if (blinking) {
+      ctx.globalAlpha = 0.35;
+    }
 
     if (this.isBoss) {
-      this.renderBoss(ctx, flashing);
+      this.renderBoss(ctx);
     } else if (this.isMidBoss) {
-      this.renderMidBoss(ctx, flashing);
+      this.renderMidBoss(ctx);
     } else {
-      this.renderMook(ctx, flashing);
+      this.renderMook(ctx);
     }
+
+    ctx.globalAlpha = 1;
   }
 
-  private renderBoss(ctx: CanvasRenderingContext2D, flash: boolean): void {
+  private renderBoss(ctx: CanvasRenderingContext2D): void {
     const cx = this.cx, cy = this.cy;
     const r = this.width / 2;
-    const dark = '#881111', mid = '#cc2222', light = flash ? '#ffffff' : '#ff5544', core = flash ? '#ffffff' : '#ffaa00';
+    const dark = '#881111', mid = '#cc2222', light = '#ff5544', core = '#ffaa00';
 
     // Outer hex body
     ctx.fillStyle = dark;
@@ -176,12 +212,12 @@ export class Enemy extends Entity {
     ctx.fillRect(cx - hpW / 2 + 1, hpY + 1, Math.floor((hpW - 2) * ratio), hpH - 2);
   }
 
-  private renderMidBoss(ctx: CanvasRenderingContext2D, flash: boolean): void {
+  private renderMidBoss(ctx: CanvasRenderingContext2D): void {
     const cx = this.cx, cy = this.cy;
     const hw = this.width / 2, hh = this.height / 2;
-    const base = flash ? '#ffffff' : '#cc4422';
-    const dark = flash ? '#ffffff' : '#661a0a';
-    const accent = flash ? '#ffffff' : '#ff6644';
+    const base = '#cc4422';
+    const dark = '#661a0a';
+    const accent = '#ff6644';
 
     // Main body — octagonal
     ctx.fillStyle = dark;
@@ -207,7 +243,7 @@ export class Enemy extends Entity {
     ctx.fillRect(cx + hw * 0.25 - 6, cy - 4, 6, 4);
 
     // Core glow
-    ctx.fillStyle = flash ? '#ffffff' : '#ffaa44';
+    ctx.fillStyle = '#ffaa44';
     ctx.fillRect(cx - 3, cy + 2, 6, 6);
 
     // HP bar
@@ -218,12 +254,12 @@ export class Enemy extends Entity {
     ctx.fillRect(cx - hpW / 2, hpY, Math.floor(hpW * (this.hp / this.maxHp)), hpH);
   }
 
-  private renderMook(ctx: CanvasRenderingContext2D, flash: boolean): void {
+  private renderMook(ctx: CanvasRenderingContext2D): void {
     const cx = this.cx, cy = this.cy;
     const s = Math.min(this.width, this.height) / 2;
-    const body = flash ? '#ffffff' : '#ff5577';
-    const wing = flash ? '#ffffff' : '#cc3355';
-    const detail = flash ? '#ffffff' : '#ff99aa';
+    const body = '#ff5577';
+    const wing = '#cc3355';
+    const detail = '#ff99aa';
 
     // Left wing
     ctx.fillStyle = wing;

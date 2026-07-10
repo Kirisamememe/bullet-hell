@@ -24,8 +24,9 @@ export class Stage1 extends Stage {
         enemy.setMovePath([
           { x: 60 + i * 100, y: -20 },
           { x: 60 + i * 100, y: 80 },
-          { x: 60 + i * 100, y: -20 },
         ]);
+        enemy.driftRange = 30;
+        enemy.driftSpeed = 9;
         enemy.patterns = [new AimedShot(2000, 2, 1)];
         this.enemies.push(enemy);
       }
@@ -39,8 +40,9 @@ export class Stage1 extends Stage {
         enemy.setMovePath([
           { x: 40 + i * 70, y: -30 },
           { x: 40 + i * 70, y: 100 },
-          { x: 40 + i * 70, y: -30 },
         ]);
+        enemy.driftRange = 25;
+        enemy.driftSpeed = 12;
         if (i % 2 === 0) {
           enemy.patterns = [new AimedShot(1500, 2.5, 1)];
         }
@@ -57,6 +59,8 @@ export class Stage1 extends Stage {
         { x: 140, y: -40 },
         { x: 140, y: 60 },
       ]);
+      this.boss.driftRange = 70;
+      this.boss.driftSpeed = 18;
       this.boss.patterns = [
         new AimedShot(600, 3, Infinity),
         new CircleShot(3000, 2, 24),

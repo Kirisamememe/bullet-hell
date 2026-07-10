@@ -14,32 +14,44 @@ export class Stage5 extends Stage {
   readonly themeColor = '#220011';
   private boss: Enemy | null = null;
   private bossSpawned = false;
+  private wave1Spawned = false;
+  private wave2Spawned = false;
+  private wave3Spawned = false;
 
   update(dt: number, player: Player): void {
     this.timer += dt;
 
     // Pre-boss gauntlet: mixed dense waves
-    if (this.timer >= 800 && this.timer < 1200 && this.enemies.filter(e => !e.isBoss && !e.isMidBoss).length < 3) {
+    if (this.timer >= 800 && !this.wave1Spawned) {
+      this.wave1Spawned = true;
       for (let i = 0; i < 3; i++) {
         const enemy = new Enemy(60 + i * 120, -20, 24, 24, 20, 800);
         enemy.setMovePath([{ x: 60 + i * 120, y: -20 }, { x: 60 + i * 120, y: 90 }]);
+        enemy.driftRange = 30;
+        enemy.driftSpeed = 12;
         enemy.patterns = [new SpiralShot(70, 3, 4000), new AimedShot(900, 4, 3)];
         this.enemies.push(enemy);
       }
     }
 
-    if (this.timer >= 4000 && this.timer < 4500 && this.enemies.filter(e => !e.isBoss && !e.isMidBoss).length < 3) {
+    if (this.timer >= 4000 && !this.wave2Spawned) {
+      this.wave2Spawned = true;
       for (let i = 0; i < 4; i++) {
         const enemy = new Enemy(30 + i * 95, -20, 20, 20, 15, 600);
         enemy.setMovePath([{ x: 30 + i * 95, y: -20 }, { x: 30 + i * 95, y: 100 }]);
+        enemy.driftRange = 20;
+        enemy.driftSpeed = 12;
         enemy.patterns = [new WaveShot(90, 3.5, 4000), new CircleShot(2500, 3, 24)];
         this.enemies.push(enemy);
       }
     }
 
-    if (this.timer >= 8000 && this.timer < 8500 && this.enemies.filter(e => !e.isBoss && !e.isMidBoss).length < 3) {
+    if (this.timer >= 8000 && !this.wave3Spawned) {
+      this.wave3Spawned = true;
       const laserEnemy = new Enemy(120, -20, 40, 40, 50, 2000);
       laserEnemy.setMovePath([{ x: 120, y: -20 }, { x: 120, y: 70 }]);
+      laserEnemy.driftRange = 45;
+      laserEnemy.driftSpeed = 12;
       laserEnemy.patterns = [new LaserShot(1200, 3000), new SpiralShot(50, 4, 4000)];
       this.enemies.push(laserEnemy);
     }
@@ -50,6 +62,8 @@ export class Stage5 extends Stage {
       this.isBossActive = true;
       this.boss = new Enemy(100, -80, 160, 80, 800, 50000, true, false);
       this.boss.setMovePath([{ x: 100, y: -80 }, { x: 100, y: 30 }]);
+      this.boss.driftRange = 70;
+      this.boss.driftSpeed = 8;
       this.boss.patterns = [
         new AimedShot(300, 5, Infinity),
         new CircleShot(1500, 4, 60),

@@ -125,6 +125,9 @@ export class Input {
       this.tapPending = false;
       return { x: this.tapX, y: this.tapY };
     }
+    if (!this.tapPending) {
+      this.shotConsumed = false;
+    }
     return null;
   }
 }
