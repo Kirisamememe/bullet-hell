@@ -1,3 +1,6 @@
+export const WIDTH = 360;
+export const HEIGHT = 640;
+
 export class CanvasManager {
   readonly canvas: HTMLCanvasElement;
   readonly ctx: CanvasRenderingContext2D;
@@ -7,8 +10,8 @@ export class CanvasManager {
   /** Integer scale factor from game resolution to CSS pixels. */
   scale = 1;
 
-  static readonly WIDTH = 360;
-  static readonly HEIGHT = 640;
+  static readonly WIDTH = WIDTH;
+  static readonly HEIGHT = HEIGHT;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;

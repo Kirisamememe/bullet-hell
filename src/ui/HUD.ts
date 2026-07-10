@@ -1,6 +1,6 @@
 import { Game } from '../core/Game';
 import { drawPixelText } from '../render/sprites';
-import { CanvasManager } from '../core/Canvas';
+import { WIDTH } from '../core/Canvas';
 
 const HUD_HEIGHT = 28;
 
@@ -18,7 +18,7 @@ export class HUD {
   render(ctx: CanvasRenderingContext2D, game: Game): void {
     // Semi-transparent background
     ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-    ctx.fillRect(0, 0, CanvasManager.WIDTH, HUD_HEIGHT);
+    ctx.fillRect(0, 0, WIDTH, HUD_HEIGHT);
 
     const y = 4;
     const scale = 1;

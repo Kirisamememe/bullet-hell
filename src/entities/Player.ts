@@ -154,27 +154,67 @@ export class Player extends Entity {
   render(ctx: CanvasRenderingContext2D): void {
     if (!this.blinkVisible) return;
 
-    // Player sprite: triangle ship (pixel-art style)
     const cx = this.cx;
     const top = this.y;
-    const bottom = this.y + this.height;
+    const bot = this.y + this.height;
+    const mid = this.cy;
+    const half = PLAYER_HALF;
 
-    ctx.fillStyle = '#00ccff';
+    // Main fuselage — layered triangle
+    ctx.fillStyle = '#005588';
     ctx.beginPath();
     ctx.moveTo(cx, top);
-    ctx.lineTo(cx + PLAYER_HALF, bottom);
-    ctx.lineTo(cx - PLAYER_HALF, bottom);
+    ctx.lineTo(cx + half, bot);
+    ctx.lineTo(cx, bot - 4);
+    ctx.lineTo(cx - half, bot);
     ctx.closePath();
     ctx.fill();
 
-    // Engine glow
-    ctx.fillStyle = '#ff8800';
-    ctx.fillRect(cx - 3, bottom - 2, 6, 4);
+    // Upper hull highlight
+    ctx.fillStyle = '#0077bb';
+    ctx.beginPath();
+    ctx.moveTo(cx, top + 2);
+    ctx.lineTo(cx + half - 2, bot - 2);
+    ctx.lineTo(cx, bot - 5);
+    ctx.lineTo(cx - half + 2, bot - 2);
+    ctx.closePath();
+    ctx.fill();
+
+    // Cockpit canopy
+    ctx.fillStyle = '#44ccff';
+    ctx.fillRect(cx - 3, top + 4, 6, 5);
+    ctx.fillStyle = '#aaeeff';
+    ctx.fillRect(cx - 1, top + 5, 2, 2);
+
+    // Wing accents
+    ctx.fillStyle = '#00aadd';
+    ctx.fillRect(cx - half + 1, bot - 8, 4, 2);
+    ctx.fillRect(cx + half - 5, bot - 8, 4, 2);
+
+    // Nacelles (side pods)
+    ctx.fillStyle = '#004466';
+    ctx.fillRect(cx - half - 1, mid, 3, 6);
+    ctx.fillRect(cx + half - 2, mid, 3, 6);
+
+    // Engine glow (two nozzles)
+    const glowPhase = Math.sin(Date.now() * 0.01) * 0.3 + 0.7;
+    ctx.fillStyle = '#ff6600';
+    ctx.fillRect(cx - 4, bot - 2, 3, 4);
+    ctx.fillRect(cx + 1, bot - 2, 3, 4);
+    ctx.fillStyle = `rgba(255, 200, 50, ${glowPhase})`;
+    ctx.fillRect(cx - 3, bot, 2, 3);
+    ctx.fillRect(cx + 1, bot, 2, 3);
 
     // Hitbox indicator (only visible when slow-moving)
     if (this.speed === SLOW_SPEED) {
       ctx.fillStyle = '#ff0000';
       ctx.fillRect(cx - 1, this.cy - 1, 2, 2);
+      // Crosshair ring
+      ctx.strokeStyle = '#ff000044';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cx, this.cy, 4, 0, Math.PI * 2);
+      ctx.stroke();
     }
   }
 }

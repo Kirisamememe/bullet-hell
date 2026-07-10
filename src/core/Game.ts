@@ -1,4 +1,4 @@
-import { CanvasManager } from './Canvas';
+import { CanvasManager, WIDTH, HEIGHT } from './Canvas';
 import { Input } from './Input';
 import { Player } from '../entities/Player';
 import { HUD } from '../ui/HUD';
@@ -13,6 +13,12 @@ import { drawPixelText } from '../render/sprites';
 import { Background } from '../render/Background';
 import { ParticleSystem } from '../render/Particles';
 import { checkPlayerCollisions, checkEnemyCollisions, checkGraze } from '../systems/Collision';
+
+const CHAR_W = 6;
+/** Center text of given length at given scale */
+function cx(len: number, scale = 1): number {
+  return Math.floor((WIDTH - len * CHAR_W * scale) / 2);
+}
 
 export enum Scene {
   Title,
@@ -274,7 +280,7 @@ export class Game {
 
     // Clear
     ctx.fillStyle = '#0a0a1a';
-    ctx.fillRect(0, 0, CanvasManager.WIDTH, CanvasManager.HEIGHT);
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
     switch (this.scene) {
       case Scene.Title:
@@ -307,9 +313,13 @@ export class Game {
   }
 
   private renderStageIntro(ctx: CanvasRenderingContext2D): void {
-    drawPixelText(ctx, `STAGE ${this.currentStageInstance.stageNumber}`, 120, 280, '#ffffff', 1);
-    drawPixelText(ctx, `-- ${this.currentStageInstance.stageName} --`, 100, 310, '#ff8844', 1);
-    drawPixelText(ctx, 'READY...', 135, 360, '#ffffff', 1);
+    const stage = this.currentStageInstance;
+    const numStr = `STAGE ${stage.stageNumber}`;
+    const nameStr = `-- ${stage.stageName} --`;
+
+    drawPixelText(ctx, numStr, cx(numStr.length), 270, '#ffffff', 1);
+    drawPixelText(ctx, nameStr, cx(nameStr.length), 300, '#ff8844', 1);
+    drawPixelText(ctx, 'READY...', cx(8), 350, '#ffffff', 1);
   }
 
   private renderPlaying(ctx: CanvasRenderingContext2D): void {
@@ -345,27 +355,37 @@ export class Game {
 
   private renderPauseOverlay(ctx: CanvasRenderingContext2D): void {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    ctx.fillRect(0, 0, CanvasManager.WIDTH, CanvasManager.HEIGHT);
-    drawPixelText(ctx, 'PAUSED', 140, 310, '#ffffff', 1);
-    drawPixelText(ctx, 'ESC TO RESUME', 105, 340, '#aaaaaa', 1);
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    drawPixelText(ctx, 'PAUSED', cx(6), 300, '#ffffff', 1);
+    drawPixelText(ctx, 'ESC TO RESUME', cx(13), 330, '#aaaaaa', 1);
   }
 
   private renderStageClearOverlay(ctx: CanvasRenderingContext2D): void {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-    ctx.fillRect(0, 0, CanvasManager.WIDTH, CanvasManager.HEIGHT);
-    drawPixelText(ctx, 'STAGE CLEAR!', 110, 280, '#ffcc00', 1);
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    drawPixelText(ctx, 'STAGE CLEAR!', cx(12), 270, '#ffcc00', 1);
     const bonus = this.bombs * 5000 + this.lives * 10000;
-    drawPixelText(ctx, `BONUS: ${bonus}`, 100, 320, '#ffffff', 1);
+    const bonusStr = `BONUS: ${bonus}`;
+    drawPixelText(ctx, bonusStr, cx(bonusStr.length), 310, '#ffffff', 1);
   }
 
   private renderGameOver(ctx: CanvasRenderingContext2D): void {
-    drawPixelText(ctx, 'GAME OVER', 122, 240, '#ff2222', 1);
-    drawPixelText(ctx, `SCORE: ${String(this.score).padStart(8, '0')}`, 100, 290, '#ffffff', 1);
-    drawPixelText(ctx, `HI: ${String(this.hiScore).padStart(8, '0')}`, 130, 310, '#aaaaaa', 1);
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    drawPixelText(ctx, 'GAME OVER', cx(9), 230, '#ff2222', 1);
+
+    const scoreStr = `SCORE: ${String(this.score).padStart(8, '0')}`;
+    drawPixelText(ctx, scoreStr, cx(scoreStr.length), 280, '#ffffff', 1);
+
+    const hiStr = `HI: ${String(this.hiScore).padStart(8, '0')}`;
+    drawPixelText(ctx, hiStr, cx(hiStr.length), 300, '#aaaaaa', 1);
+
     if (this.score >= this.hiScore && this.score > 0) {
-      drawPixelText(ctx, 'NEW RECORD!', 118, 340, '#ffcc00', 1);
+      drawPixelText(ctx, 'NEW RECORD!', cx(11), 330, '#ffcc00', 1);
     }
-    drawPixelText(ctx, 'Z - CONTINUE', 110, 400, '#ffffff', 1);
-    drawPixelText(ctx, 'X - TITLE', 120, 425, '#ffffff', 1);
+
+    drawPixelText(ctx, 'Z - CONTINUE', cx(12), 395, '#ffffff', 1);
+    drawPixelText(ctx, 'X - TITLE', cx(9), 420, '#ffffff', 1);
   }
 }
