@@ -1,5 +1,6 @@
 import { CanvasManager } from './Canvas';
 import { Input } from './Input';
+import { Player } from '../entities/Player';
 
 export enum Scene {
   Title,
@@ -25,6 +26,7 @@ export class Game {
   power = 1;
   stage = 1;
   continueCount = 0;
+  player: Player | null = null;
 
   constructor(canvas: CanvasManager) {
     this.canvas = canvas;
@@ -62,8 +64,37 @@ export class Game {
     requestAnimationFrame(this.loop);
   };
 
-  update(_dt: number): void {
-    // Scene-specific update will be wired in later tasks
+  newGame(): void {
+    this.score = 0;
+    this.lives = 3;
+    this.bombs = 3;
+    this.power = 1;
+    this.player = new Player();
+    this.scene = Scene.Playing;
+  }
+
+  update(dt: number): void {
+    switch (this.scene) {
+      case Scene.Playing: {
+        if (!this.player) break;
+        const input = this.input.state;
+
+        // Handle bomb consumption
+        if (this.input.consumeBomb() && this.bombs > 0) {
+          this.bombs--;
+          this.player.useBomb();
+        }
+
+        this.player.handleInput(input);
+        // Collect bullets from shooting for later processing
+        // (bullet pool management added in a later task)
+        this.player.shoot(dt);
+        this.player.update(dt);
+        break;
+      }
+      default:
+        break;
+    }
   }
 
   render(): void {
