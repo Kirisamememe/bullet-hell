@@ -196,7 +196,10 @@ export class Game {
     this.particles.update(dt);
 
     // Player input
-    this.player.handleInput(this.input.state);
+    this.player.handleInput(
+      this.input.state,
+      (sx, sy) => this.canvas.screenToGame(sx, sy)
+    );
 
     // Player shooting
     if (this.input.state.shot || this.input.state.touchActive) {

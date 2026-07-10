@@ -60,6 +60,15 @@ export class CanvasManager {
     this.canvas.style.top = `${(maxH - cssH) / 2}px`;
   }
 
+  /** Convert screen/client coordinates to game coordinates */
+  screenToGame(screenX: number, screenY: number): { x: number; y: number } {
+    const rect = this.canvas.getBoundingClientRect();
+    return {
+      x: (screenX - rect.left) / this.scale,
+      y: (screenY - rect.top) / this.scale,
+    };
+  }
+
   flip(): void {
     const dpr = window.devicePixelRatio || 1;
     const ctx = this.ctx;

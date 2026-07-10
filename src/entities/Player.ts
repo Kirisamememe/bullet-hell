@@ -17,55 +17,65 @@ const PLAY_AREA_BOTTOM = 640 - 16;
 
 export class Player extends Entity {
   speed = NORMAL_SPEED;
-  invincible = true; // start invincible briefly
+  invincible = true;
   invincibleTimer = 2000;
   shootTimer = 0;
   bombTimer = 0;
   power = 1;
   blinkVisible = true;
   private blinkTimer = 0;
+  private touchWasActive = false;
+
+  /** Touch Y offset: ship renders this many px above the finger */
+  private static readonly TOUCH_Y_OFFSET = 48;
 
   constructor() {
     super(180 - PLAYER_HALF, 560, PLAYER_SIZE, PLAYER_SIZE);
   }
 
-  handleInput(input: InputState): void {
+  handleInput(
+    input: InputState,
+    screenToGame?: (sx: number, sy: number) => { x: number; y: number }
+  ): void {
     this.speed = input.slow ? SLOW_SPEED : NORMAL_SPEED;
 
-    let dx = 0, dy = 0;
-    if (input.up) dy -= 1;
-    if (input.down) dy += 1;
-    if (input.left) dx -= 1;
-    if (input.right) dx += 1;
+    if (input.touchActive && screenToGame) {
+      // Convert screen touch coords to game coords
+      const target = screenToGame(input.touchX, input.touchY);
+      // Offset so ship is above the finger
+      target.y -= Player.TOUCH_Y_OFFSET;
 
-    // Touch input: move toward touch position
-    if (input.touchActive) {
-      // touchX/Y are in CSS pixels; we need to map to game coords.
-      // This mapping is handled by CanvasManager — for now store raw;
-      // the conversion happens when we know the canvas scale.
-      // We'll use a conversion approach in Task 13 (touch refinement),
-      // for now use raw input directly.
-      const targetX = input.touchX;
-      const targetY = input.touchY;
-      const distX = targetX - this.cx;
-      const distY = targetY - this.cy;
-      const dist = Math.sqrt(distX * distX + distY * distY);
-      if (dist > 2) {
-        dx = distX / dist;
-        dy = distY / dist;
-        this.speed = NORMAL_SPEED;
+      if (!this.touchWasActive) {
+        // First touch: snap to finger position
+        this.x = target.x - this.width / 2;
+        this.y = target.y - this.height / 2;
+      } else {
+        // Continued touch: lerp smoothly toward target
+        const lerpFactor = 0.25;
+        this.x += (target.x - this.cx) * lerpFactor;
+        this.y += (target.y - this.cy) * lerpFactor;
       }
-    }
+      this.touchWasActive = true;
+    } else {
+      this.touchWasActive = false;
 
-    // Normalize diagonal movement
-    if (dx !== 0 && dy !== 0) {
-      const inv = 1 / Math.SQRT2;
-      dx *= inv;
-      dy *= inv;
-    }
+      // Keyboard movement
+      let dx = 0, dy = 0;
+      if (input.up) dy -= 1;
+      if (input.down) dy += 1;
+      if (input.left) dx -= 1;
+      if (input.right) dx += 1;
 
-    this.x += dx * this.speed;
-    this.y += dy * this.speed;
+      // Normalize diagonal movement
+      if (dx !== 0 && dy !== 0) {
+        const inv = 1 / Math.SQRT2;
+        dx *= inv;
+        dy *= inv;
+      }
+
+      this.x += dx * this.speed;
+      this.y += dy * this.speed;
+    }
 
     // Clamp to play area
     this.x = Math.max(PLAY_AREA_LEFT, Math.min(PLAY_AREA_RIGHT - this.width, this.x));
