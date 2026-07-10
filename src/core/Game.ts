@@ -1,4 +1,5 @@
 import { CanvasManager } from './Canvas';
+import { Input } from './Input';
 
 export enum Scene {
   Title,
@@ -11,6 +12,7 @@ export enum Scene {
 
 export class Game {
   readonly canvas: CanvasManager;
+  readonly input: Input;
   scene: Scene = Scene.Title;
   private lastTime = 0;
   private running = false;
@@ -26,6 +28,7 @@ export class Game {
 
   constructor(canvas: CanvasManager) {
     this.canvas = canvas;
+    this.input = new Input(canvas.canvas);
   }
 
   private loadHiScore(): number {
