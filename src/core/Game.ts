@@ -198,6 +198,7 @@ export class Game {
     // Player input
     this.player.handleInput(
       this.input.state,
+      dt,
       (sx, sy) => this.canvas.screenToGame(sx, sy)
     );
 

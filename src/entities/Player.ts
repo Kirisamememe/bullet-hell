@@ -35,6 +35,7 @@ export class Player extends Entity {
 
   handleInput(
     input: InputState,
+    dt: number,
     screenToGame?: (sx: number, sy: number) => { x: number; y: number }
   ): void {
     this.speed = input.slow ? SLOW_SPEED : NORMAL_SPEED;
@@ -46,14 +47,15 @@ export class Player extends Entity {
       target.y -= Player.TOUCH_Y_OFFSET;
 
       if (!this.touchWasActive) {
-        // First touch: snap to finger position
+        // First touch: snap to finger position instantly
         this.x = target.x - this.width / 2;
         this.y = target.y - this.height / 2;
       } else {
-        // Continued touch: lerp smoothly toward target
-        const lerpFactor = 0.25;
-        this.x += (target.x - this.cx) * lerpFactor;
-        this.y += (target.y - this.cy) * lerpFactor;
+        // Continued touch: dt-independent smooth follow
+        // lerp factor: reaches 90% of target in ~8 frames at 60fps
+        const t = 1 - Math.exp(-10 * dt / 1000);
+        this.x += (target.x - this.cx) * t;
+        this.y += (target.y - this.cy) * t;
       }
       this.touchWasActive = true;
     } else {
