@@ -10,6 +10,8 @@ import { Stage3 } from '../stages/Stage3';
 import { Stage4 } from '../stages/Stage4';
 import { Stage5 } from '../stages/Stage5';
 import { drawPixelText } from '../render/sprites';
+import { Background } from '../render/Background';
+import { ParticleSystem } from '../render/Particles';
 import { checkPlayerCollisions, checkEnemyCollisions, checkGraze } from '../systems/Collision';
 
 export enum Scene {
@@ -26,6 +28,8 @@ export class Game {
   readonly input: Input;
   readonly hud: HUD;
   readonly titleScreen: TitleScreen;
+  readonly background: Background;
+  readonly particles: ParticleSystem;
   scene: Scene = Scene.Title;
   private running = false;
   private lastTime = 0;
@@ -52,6 +56,8 @@ export class Game {
     this.input = new Input(canvas.canvas);
     this.hud = new HUD();
     this.titleScreen = new TitleScreen();
+    this.background = new Background();
+    this.particles = new ParticleSystem();
     this.initPlayer();
   }
 
@@ -179,6 +185,10 @@ export class Game {
   }
 
   private updatePlaying(dt: number): void {
+    // Background
+    this.background.update(dt);
+    this.particles.update(dt);
+
     // Player input
     this.player.handleInput(this.input.state);
 
@@ -197,6 +207,7 @@ export class Game {
       for (const b of this.currentStageInstance.enemyBullets) {
         b.active = false;
       }
+      this.particles.emit(180, 320, 30, '#ffffff', 6, 600);
     }
 
     // Update player
@@ -209,6 +220,7 @@ export class Game {
     if (checkPlayerCollisions(this.player, this.currentStageInstance.enemyBullets)) {
       if (this.player.hit()) {
         this.lives--;
+        this.particles.emit(this.player.cx, this.player.cy, 12, '#ff4444', 3, 500);
         if (this.lives < 0) {
           this.lives = 0;
           this.saveHiScore();
@@ -234,6 +246,8 @@ export class Game {
     );
     for (const enemy of destroyed) {
       this.score += enemy.scoreValue;
+      this.particles.emit(enemy.cx, enemy.cy, enemy.isBoss ? 20 : 8,
+        enemy.isBoss ? '#ff6644' : '#ffaa44', enemy.isBoss ? 4 : 2);
       if (enemy.dropPowerItem && this.power < 5) {
         this.power++;
       }
@@ -300,6 +314,12 @@ export class Game {
 
   private renderPlaying(ctx: CanvasRenderingContext2D): void {
     const stage = this.currentStageInstance;
+
+    // Parallax background
+    this.background.render(ctx, stage.themeColor);
+
+    // Particles (behind entities)
+    this.particles.render(ctx);
 
     // Enemies
     for (const enemy of stage.enemies) {
