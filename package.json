@@ -1,0 +1,13 @@
+{
+  "name": "danma-rengo",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/server.ts",
+    "build": "bun build src/main.ts --outdir=dist --target=browser",
+    "start": "bun run dist/main.js"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
