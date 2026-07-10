@@ -1,6 +1,12 @@
 import { CanvasManager } from './Canvas';
 import { Input } from './Input';
 import { Player } from '../entities/Player';
+import { HUD } from '../ui/HUD';
+import { TitleScreen } from '../ui/TitleScreen';
+import { Stage } from '../stages/Stage';
+import { Stage1 } from '../stages/Stage1';
+import { drawPixelText } from '../render/sprites';
+import { checkPlayerCollisions, checkEnemyCollisions, checkGraze } from '../systems/Collision';
 
 export enum Scene {
   Title,
@@ -14,34 +20,56 @@ export enum Scene {
 export class Game {
   readonly canvas: CanvasManager;
   readonly input: Input;
+  readonly hud: HUD;
+  readonly titleScreen: TitleScreen;
   scene: Scene = Scene.Title;
-  private lastTime = 0;
   private running = false;
+  private lastTime = 0;
 
-  // Game state shared across systems
+  // Game state
   score = 0;
   hiScore = this.loadHiScore();
   lives = 3;
   bombs = 3;
   power = 1;
-  stage = 1;
+  currentStage = 1;
   continueCount = 0;
-  player: Player | null = null;
+
+  // Entities
+  player!: Player;
+  currentStageInstance!: Stage;
+
+  // Stage intro / clear timers
+  private transitionTimer = 0;
+  private stageClearTimer = 0;
 
   constructor(canvas: CanvasManager) {
     this.canvas = canvas;
     this.input = new Input(canvas.canvas);
+    this.hud = new HUD();
+    this.titleScreen = new TitleScreen();
+    this.initPlayer();
+  }
+
+  private initPlayer(): void {
+    this.player = new Player();
   }
 
   private loadHiScore(): number {
-    const stored = localStorage.getItem('danma-hi');
-    return stored ? parseInt(stored, 10) : 0;
+    try {
+      const stored = localStorage.getItem('danma-hi');
+      return stored ? parseInt(stored, 10) : 0;
+    } catch {
+      return 0;
+    }
   }
 
   saveHiScore(): void {
     if (this.score > this.hiScore) {
       this.hiScore = this.score;
-      localStorage.setItem('danma-hi', String(this.hiScore));
+      try {
+        localStorage.setItem('danma-hi', String(this.hiScore));
+      } catch { /* localStorage may be unavailable */ }
     }
   }
 
@@ -55,66 +83,258 @@ export class Game {
     if (!this.running) return;
     const rawDt = now - this.lastTime;
     this.lastTime = now;
-    // Clamp delta to avoid spiral of death
-    const dt = Math.min(rawDt, 33.33); // max ~30fps worth of delta
-
+    const dt = Math.min(rawDt, 33.33);
     this.update(dt);
     this.render();
-
     requestAnimationFrame(this.loop);
   };
 
-  newGame(): void {
-    this.score = 0;
-    this.lives = 3;
-    this.bombs = 3;
-    this.power = 1;
+  private startStage(stageNum: number): void {
+    this.currentStage = stageNum;
+    this.currentStageInstance = new Stage1(); // TODO: wire stages 2-5 in Task 14
     this.player = new Player();
-    this.scene = Scene.Playing;
+    this.scene = Scene.StageIntro;
+    this.transitionTimer = 2000;
   }
 
   update(dt: number): void {
-    switch (this.scene) {
-      case Scene.Playing: {
-        if (!this.player) break;
-        const input = this.input.state;
-
-        // Handle bomb consumption
-        if (this.input.consumeBomb() && this.bombs > 0) {
-          this.bombs--;
-          this.player.useBomb();
-        }
-
-        this.player.handleInput(input);
-        // Collect bullets from shooting for later processing
-        // (bullet pool management added in a later task)
-        this.player.shoot(dt);
-        this.player.update(dt);
-        break;
+    const pausePressed = this.input.consumePause();
+    if (pausePressed) {
+      if (this.scene === Scene.Playing) {
+        this.scene = Scene.Paused;
+        return;
+      } else if (this.scene === Scene.Paused) {
+        this.scene = Scene.Playing;
+        return;
       }
-      default:
+    }
+
+    switch (this.scene) {
+      case Scene.Title:
+        this.titleScreen.update(dt);
+        if (this.input.state.shot) {
+          this.score = 0;
+          this.lives = 3;
+          this.bombs = 3;
+          this.power = 1;
+          this.continueCount = 0;
+          this.startStage(1);
+        }
+        break;
+
+      case Scene.StageIntro:
+        this.transitionTimer -= dt;
+        if (this.transitionTimer <= 0) {
+          this.scene = Scene.Playing;
+        }
+        break;
+
+      case Scene.Playing:
+        this.updatePlaying(dt);
+        break;
+
+      case Scene.StageClear:
+        this.stageClearTimer -= dt;
+        if (this.stageClearTimer <= 0) {
+          if (this.currentStage < 5) {
+            this.startStage(this.currentStage + 1);
+          } else {
+            this.saveHiScore();
+            this.scene = Scene.Title;
+          }
+        }
+        break;
+
+      case Scene.Paused:
+        break;
+
+      case Scene.GameOver:
+        this.transitionTimer -= dt;
+        if (this.transitionTimer <= 0) {
+          if (this.input.state.shot) {
+            this.lives = 3;
+            this.bombs = 3;
+            this.power = 1;
+            this.continueCount++;
+            this.startStage(this.currentStage);
+          }
+          if (this.input.state.bomb) {
+            this.saveHiScore();
+            this.scene = Scene.Title;
+          }
+        }
         break;
     }
+  }
+
+  private updatePlaying(dt: number): void {
+    // Player input
+    this.player.handleInput(this.input.state);
+
+    // Player shooting
+    if (this.input.state.shot || this.input.state.touchActive) {
+      const newBullets = this.player.shoot(dt);
+      this.currentStageInstance.playerBullets.push(...newBullets);
+    } else {
+      this.player.shootTimer = 0;
+    }
+
+    // Bomb
+    if (this.input.consumeBomb() && this.bombs > 0) {
+      this.bombs--;
+      this.player.useBomb();
+      for (const b of this.currentStageInstance.enemyBullets) {
+        b.active = false;
+      }
+    }
+
+    // Update player
+    this.player.update(dt);
+
+    // Update stage
+    this.currentStageInstance.update(dt, this.player);
+
+    // Collision: player vs enemy bullets
+    if (checkPlayerCollisions(this.player, this.currentStageInstance.enemyBullets)) {
+      if (this.player.hit()) {
+        this.lives--;
+        if (this.lives < 0) {
+          this.lives = 0;
+          this.saveHiScore();
+          this.scene = Scene.GameOver;
+          this.transitionTimer = 1500;
+          return;
+        }
+      }
+    }
+
+    // Graze detection
+    for (const bullet of this.currentStageInstance.enemyBullets) {
+      if (bullet.active && checkGraze(this.player, bullet)) {
+        this.score += 100;
+        this.hud.triggerGrazeFlash();
+      }
+    }
+
+    // Collision: player bullets vs enemies
+    const destroyed = checkEnemyCollisions(
+      this.currentStageInstance.enemies,
+      this.currentStageInstance.playerBullets
+    );
+    for (const enemy of destroyed) {
+      this.score += enemy.scoreValue;
+      if (enemy.dropPowerItem && this.power < 5) {
+        this.power++;
+      }
+    }
+
+    // Stage complete
+    if (this.currentStageInstance.isComplete) {
+      this.score += this.bombs * 5000;
+      this.score += this.lives * 10000;
+      this.saveHiScore();
+      this.scene = Scene.StageClear;
+      this.stageClearTimer = 3000;
+    }
+
+    // Sync player power with game
+    this.power = this.player.power;
+
+    // HUD
+    this.hud.update(dt);
   }
 
   render(): void {
     const ctx = this.canvas.offscreenCtx;
-    // Clear with dark background
-    ctx.fillStyle = '#111133';
+
+    // Clear
+    ctx.fillStyle = '#0a0a1a';
     ctx.fillRect(0, 0, CanvasManager.WIDTH, CanvasManager.HEIGHT);
 
-    // Scene-specific rendering
-    if (this.scene === Scene.Playing) {
-      if (this.player) {
-        this.player.render(ctx);
-      }
+    switch (this.scene) {
+      case Scene.Title:
+        this.titleScreen.render(ctx);
+        break;
+
+      case Scene.StageIntro:
+        this.renderStageIntro(ctx);
+        break;
+
+      case Scene.Playing:
+      case Scene.Paused:
+        this.renderPlaying(ctx);
+        if (this.scene === Scene.Paused) {
+          this.renderPauseOverlay(ctx);
+        }
+        break;
+
+      case Scene.StageClear:
+        this.renderPlaying(ctx);
+        this.renderStageClearOverlay(ctx);
+        break;
+
+      case Scene.GameOver:
+        this.renderGameOver(ctx);
+        break;
     }
 
-    // Scene text placeholder
-    ctx.fillStyle = '#fff';
-    ctx.font = '12px monospace';
-    ctx.fillText(`Scene: ${Scene[this.scene]}`, 10, 20);
-
     this.canvas.flip();
+  }
+
+  private renderStageIntro(ctx: CanvasRenderingContext2D): void {
+    drawPixelText(ctx, `STAGE ${this.currentStageInstance.stageNumber}`, 120, 280, '#ffffff', 1);
+    drawPixelText(ctx, `-- ${this.currentStageInstance.stageName} --`, 100, 310, '#ff8844', 1);
+    drawPixelText(ctx, 'READY...', 135, 360, '#ffffff', 1);
+  }
+
+  private renderPlaying(ctx: CanvasRenderingContext2D): void {
+    const stage = this.currentStageInstance;
+
+    // Enemies
+    for (const enemy of stage.enemies) {
+      enemy.render(ctx);
+    }
+
+    // Enemy bullets
+    for (const bullet of stage.enemyBullets) {
+      bullet.render(ctx);
+    }
+
+    // Player bullets
+    for (const bullet of stage.playerBullets) {
+      bullet.render(ctx);
+    }
+
+    // Player
+    this.player.render(ctx);
+
+    // HUD
+    this.hud.render(ctx, this);
+  }
+
+  private renderPauseOverlay(ctx: CanvasRenderingContext2D): void {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(0, 0, CanvasManager.WIDTH, CanvasManager.HEIGHT);
+    drawPixelText(ctx, 'PAUSED', 140, 310, '#ffffff', 1);
+    drawPixelText(ctx, 'ESC TO RESUME', 105, 340, '#aaaaaa', 1);
+  }
+
+  private renderStageClearOverlay(ctx: CanvasRenderingContext2D): void {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    ctx.fillRect(0, 0, CanvasManager.WIDTH, CanvasManager.HEIGHT);
+    drawPixelText(ctx, 'STAGE CLEAR!', 110, 280, '#ffcc00', 1);
+    const bonus = this.bombs * 5000 + this.lives * 10000;
+    drawPixelText(ctx, `BONUS: ${bonus}`, 100, 320, '#ffffff', 1);
+  }
+
+  private renderGameOver(ctx: CanvasRenderingContext2D): void {
+    drawPixelText(ctx, 'GAME OVER', 122, 240, '#ff2222', 1);
+    drawPixelText(ctx, `SCORE: ${String(this.score).padStart(8, '0')}`, 100, 290, '#ffffff', 1);
+    drawPixelText(ctx, `HI: ${String(this.hiScore).padStart(8, '0')}`, 130, 310, '#aaaaaa', 1);
+    if (this.score >= this.hiScore && this.score > 0) {
+      drawPixelText(ctx, 'NEW RECORD!', 118, 340, '#ffcc00', 1);
+    }
+    drawPixelText(ctx, 'Z - CONTINUE', 110, 400, '#ffffff', 1);
+    drawPixelText(ctx, 'X - TITLE', 120, 425, '#ffffff', 1);
   }
 }
