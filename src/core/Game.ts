@@ -103,6 +103,13 @@ export class Game {
     ctx.fillStyle = '#111133';
     ctx.fillRect(0, 0, CanvasManager.WIDTH, CanvasManager.HEIGHT);
 
+    // Scene-specific rendering
+    if (this.scene === Scene.Playing) {
+      if (this.player) {
+        this.player.render(ctx);
+      }
+    }
+
     // Scene text placeholder
     ctx.fillStyle = '#fff';
     ctx.font = '12px monospace';
