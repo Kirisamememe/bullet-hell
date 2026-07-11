@@ -2,6 +2,26 @@ import { Entity } from './Entity';
 import { BulletPattern } from '../patterns/Pattern';
 import { Bullet } from './Bullet';
 
+export interface EnemyPalette {
+  dark: string;
+  mid: string;
+  light: string;
+  core: string;
+  glow: string;
+}
+
+export const MOOK_PALETTE: EnemyPalette = {
+  dark: '#7a1533', mid: '#d43a63', light: '#ff8fae', core: '#fff2c8', glow: '#ff5588',
+};
+
+export const MIDBOSS_PALETTE: EnemyPalette = {
+  dark: '#5a2408', mid: '#cc5522', light: '#ffb066', core: '#fff2c0', glow: '#ff8833',
+};
+
+export const BOSS_PALETTE: EnemyPalette = {
+  dark: '#5c0d0d', mid: '#cc2222', light: '#ff6a4d', core: '#ffe08a', glow: '#ff3311',
+};
+
 export class Enemy extends Entity {
   hp: number;
   maxHp: number;
@@ -12,6 +32,12 @@ export class Enemy extends Entity {
   flashTimer = 0;
   dropPowerItem = false;
   patterns: BulletPattern[] = [];
+  /** Optional per-stage art palette override; falls back to type default. */
+  palette?: EnemyPalette;
+  /** Set true by checkPhase() on the frame a boss phase changes; caller should consume+reset. */
+  phaseChangedFlag = false;
+
+  private animTime = 0;
 
   // Movement behavior
   private movePath?: { x: number; y: number }[];
@@ -40,6 +66,8 @@ export class Enemy extends Entity {
     this.scoreValue = scoreValue;
     this.isBoss = isBoss;
     this.isMidBoss = isMidBoss;
+    // Slight per-instance animation phase offset so groups don't move in lockstep
+    this.animTime = (x * 13 + y * 7) % 1000;
   }
 
   setMovePath(path: { x: number; y: number }[]): void {
@@ -86,12 +114,15 @@ export class Enemy extends Entity {
       : (hpPct < 0.2 ? 5 : hpPct < 0.4 ? 4 : hpPct < 0.6 ? 3 : hpPct < 0.8 ? 2 : 1);
     if (newPhase !== this.phase) {
       this.phase = newPhase;
+      this.phaseChangedFlag = true;
       return true;
     }
     return false;
   }
 
   update(dt: number): void {
+    this.animTime += dt;
+
     // Flash timer (blink state: on when timer%8 < 4)
     if (this.flashTimer > 0) this.flashTimer -= dt * 60 / 1000;
 
@@ -157,70 +188,128 @@ export class Enemy extends Entity {
   private renderBoss(ctx: CanvasRenderingContext2D): void {
     const cx = this.cx, cy = this.cy;
     const r = this.width / 2;
-    const dark = '#881111', mid = '#cc2222', light = '#ff5544', core = '#ffaa00';
+    const pal = this.palette ?? BOSS_PALETTE;
+    const t = this.animTime * 0.001;
+    // Higher phase = faster rotation & more intense pulse
+    const intensity = 1 + this.phase * 0.15;
+    const rotOuter = t * 0.4 * intensity;
+    const rotInner = -t * 0.7 * intensity;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 3 * intensity);
 
-    // Outer hex body
-    ctx.fillStyle = dark;
+    // Outer aura glow
+    ctx.save();
+    ctx.shadowColor = pal.glow;
+    ctx.shadowBlur = 14 + pulse * 8;
+
+    // Rotating outer hex shell
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rotOuter);
+    const outerGrad = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r);
+    outerGrad.addColorStop(0, pal.mid);
+    outerGrad.addColorStop(1, pal.dark);
+    ctx.fillStyle = outerGrad;
     ctx.beginPath();
     for (let i = 0; i < 6; i++) {
-      const a = (Math.PI / 3) * i - Math.PI / 2;
-      const px = cx + Math.cos(a) * r;
-      const py = cy + Math.sin(a) * r;
+      const a = (Math.PI / 3) * i;
+      const px = Math.cos(a) * r;
+      const py = Math.sin(a) * r;
       i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
     }
     ctx.closePath();
     ctx.fill();
 
-    // Inner hex (mid color)
-    ctx.fillStyle = mid;
+    // Vertex spikes
+    ctx.fillStyle = pal.light;
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 3) * i;
+      const bx = Math.cos(a) * r, by = Math.sin(a) * r;
+      const tx = Math.cos(a) * (r + 6 + pulse * 3), ty = Math.sin(a) * (r + 6 + pulse * 3);
+      const perp = a + Math.PI / 2;
+      const w = 3;
+      ctx.beginPath();
+      ctx.moveTo(bx + Math.cos(perp) * w, by + Math.sin(perp) * w);
+      ctx.lineTo(bx - Math.cos(perp) * w, by - Math.sin(perp) * w);
+      ctx.lineTo(tx, ty);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+    ctx.shadowBlur = 0;
+
+    // Inner counter-rotating hex plate
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rotInner);
+    ctx.fillStyle = pal.dark;
+    ctx.globalAlpha *= 0.9;
     ctx.beginPath();
     for (let i = 0; i < 6; i++) {
-      const a = (Math.PI / 3) * i - Math.PI / 2;
-      const px = cx + Math.cos(a) * r * 0.7;
-      const py = cy + Math.sin(a) * r * 0.7;
+      const a = (Math.PI / 3) * i;
+      const px = Math.cos(a) * r * 0.68;
+      const py = Math.sin(a) * r * 0.68;
       i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
     }
     ctx.closePath();
     ctx.fill();
 
-    // Bright accent lines from center to vertices
-    ctx.strokeStyle = light;
+    // Panel seams
+    ctx.strokeStyle = pal.light;
+    ctx.globalAlpha *= 0.5;
     ctx.lineWidth = 1;
     for (let i = 0; i < 6; i++) {
-      const a = (Math.PI / 3) * i - Math.PI / 2;
+      const a = (Math.PI / 3) * i;
       ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + Math.cos(a) * r * 0.9, cy + Math.sin(a) * r * 0.9);
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(a) * r * 0.6, Math.sin(a) * r * 0.6);
       ctx.stroke();
     }
+    ctx.restore();
+    ctx.restore(); // pop shadow
 
-    // Core
-    ctx.fillStyle = core;
-    ctx.fillRect(cx - 4, cy - 4, 8, 8);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(cx - 2, cy - 2, 4, 4);
+    // Pulsing core with layered radial gradient
+    const coreR = 6 + pulse * 2.5;
+    ctx.save();
+    ctx.shadowColor = pal.core;
+    ctx.shadowBlur = 10 + pulse * 6;
+    const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR);
+    coreGrad.addColorStop(0, '#ffffff');
+    coreGrad.addColorStop(0.5, pal.core);
+    coreGrad.addColorStop(1, pal.glow);
+    ctx.fillStyle = coreGrad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, coreR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
 
-    // HP bar (below boss)
-    const hpW = 64, hpH = 4, hpY = this.y - 8;
-    ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(cx - hpW / 2, hpY, hpW, hpH);
-    ctx.fillStyle = '#333333';
-    ctx.fillRect(cx - hpW / 2 + 1, hpY + 1, hpW - 2, hpH - 2);
-    const ratio = this.hp / this.maxHp;
-    const hpColor = ratio > 0.5 ? '#44ff44' : ratio > 0.25 ? '#ffaa00' : '#ff2222';
-    ctx.fillStyle = hpColor;
-    ctx.fillRect(cx - hpW / 2 + 1, hpY + 1, Math.floor((hpW - 2) * ratio), hpH - 2);
+    // Rotating iris lines across core
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(t * 1.5 * intensity);
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 3; i++) {
+      const a = (Math.PI / 3) * i * 2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * coreR * 0.4, Math.sin(a) * coreR * 0.4);
+      ctx.lineTo(Math.cos(a) * coreR * 1.4, Math.sin(a) * coreR * 1.4);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   private renderMidBoss(ctx: CanvasRenderingContext2D): void {
     const cx = this.cx, cy = this.cy;
     const hw = this.width / 2, hh = this.height / 2;
-    const base = '#cc4422';
-    const dark = '#661a0a';
-    const accent = '#ff6644';
+    const pal = this.palette ?? MIDBOSS_PALETTE;
+    const t = this.animTime * 0.001;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 2.6);
 
-    // Main body — octagonal
-    ctx.fillStyle = dark;
+    // Main octagonal hull with gradient
+    const hullGrad = ctx.createLinearGradient(this.x, this.y, this.x, this.y + this.height);
+    hullGrad.addColorStop(0, pal.mid);
+    hullGrad.addColorStop(1, pal.dark);
+    ctx.fillStyle = hullGrad;
     ctx.beginPath();
     const pts = [
       [cx - hw * 0.6, this.y], [cx + hw * 0.6, this.y],
@@ -233,60 +322,120 @@ export class Enemy extends Entity {
     ctx.closePath();
     ctx.fill();
 
-    // Inner body
-    ctx.fillStyle = base;
-    ctx.fillRect(cx - hw * 0.35, cy - hh * 0.35, hw * 0.7, hh * 0.7);
+    // Panel line details
+    ctx.strokeStyle = pal.dark;
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(this.x + 4, cy); ctx.lineTo(this.x + this.width - 4, cy);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
 
-    // Eye-like details
-    ctx.fillStyle = accent;
-    ctx.fillRect(cx - hw * 0.25, cy - 4, 6, 4);
-    ctx.fillRect(cx + hw * 0.25 - 6, cy - 4, 6, 4);
+    // Side glowing vents (pulse)
+    ctx.save();
+    ctx.shadowColor = pal.glow;
+    ctx.shadowBlur = 6 + pulse * 4;
+    ctx.fillStyle = pal.light;
+    ctx.fillRect(this.x + 2, cy - 2, 4, 4);
+    ctx.fillRect(this.x + this.width - 6, cy - 2, 4, 4);
+    ctx.restore();
 
-    // Core glow
-    ctx.fillStyle = '#ffaa44';
-    ctx.fillRect(cx - 3, cy + 2, 6, 6);
+    // Rotating accent ring around central eye
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(t * 1.1);
+    ctx.strokeStyle = pal.light;
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.8;
+    ctx.beginPath();
+    ctx.arc(0, 0, hh * 0.42, 0, Math.PI * 1.4);
+    ctx.stroke();
+    ctx.restore();
 
-    // HP bar
-    const hpW = 50, hpH = 3, hpY = this.y - 6;
-    ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(cx - hpW / 2, hpY, hpW, hpH);
-    ctx.fillStyle = '#ff6644';
-    ctx.fillRect(cx - hpW / 2, hpY, Math.floor(hpW * (this.hp / this.maxHp)), hpH);
+    // Central eye core
+    const coreR = hh * 0.28 + pulse * 1.5;
+    ctx.save();
+    ctx.shadowColor = pal.core;
+    ctx.shadowBlur = 8 + pulse * 5;
+    const eyeGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreR);
+    eyeGrad.addColorStop(0, '#ffffff');
+    eyeGrad.addColorStop(0.55, pal.core);
+    eyeGrad.addColorStop(1, pal.glow);
+    ctx.fillStyle = eyeGrad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, coreR, 0, Math.PI * 2);
+    ctx.fill();
+    // Iris slit
+    ctx.fillStyle = pal.dark;
+    ctx.fillRect(cx - coreR * 0.9, cy - 1.2, coreR * 1.8, 2.4);
+    ctx.restore();
   }
 
   private renderMook(ctx: CanvasRenderingContext2D): void {
     const cx = this.cx, cy = this.cy;
     const s = Math.min(this.width, this.height) / 2;
-    const body = '#ff5577';
-    const wing = '#cc3355';
-    const detail = '#ff99aa';
+    const pal = this.palette ?? MOOK_PALETTE;
+    const t = this.animTime * 0.001;
+    const flap = Math.sin(t * 10) * 0.35 + 0.65; // wing flap 0.3..1
 
+    // Wings — animated flap via horizontal scale-ish shear using flap factor
+    const wingSpan = s * 0.55 * flap;
+    ctx.fillStyle = pal.mid;
     // Left wing
-    ctx.fillStyle = wing;
     ctx.beginPath();
-    ctx.moveTo(cx - 1, cy);
-    ctx.lineTo(this.x, this.y);
+    ctx.moveTo(cx - 1, cy - s * 0.1);
+    ctx.lineTo(cx - wingSpan - s * 0.3, this.y + s * 0.15);
     ctx.lineTo(this.x, cy + s * 0.6);
-    ctx.lineTo(this.x + s * 0.5, cy + s * 0.4);
+    ctx.lineTo(cx - wingSpan * 0.4, cy + s * 0.35);
     ctx.closePath();
     ctx.fill();
-
     // Right wing
-    ctx.fillStyle = wing;
     ctx.beginPath();
-    ctx.moveTo(cx + 1, cy);
-    ctx.lineTo(this.x + this.width, this.y);
+    ctx.moveTo(cx + 1, cy - s * 0.1);
+    ctx.lineTo(cx + wingSpan + s * 0.3, this.y + s * 0.15);
     ctx.lineTo(this.x + this.width, cy + s * 0.6);
-    ctx.lineTo(this.x + this.width - s * 0.5, cy + s * 0.4);
+    ctx.lineTo(cx + wingSpan * 0.4, cy + s * 0.35);
     ctx.closePath();
     ctx.fill();
 
-    // Body
-    ctx.fillStyle = body;
-    ctx.fillRect(cx - 3, cy - s * 0.5, 6, s);
+    // Wing edge highlight
+    ctx.strokeStyle = pal.light;
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx - 1, cy - s * 0.1); ctx.lineTo(cx - wingSpan - s * 0.3, this.y + s * 0.15);
+    ctx.moveTo(cx + 1, cy - s * 0.1); ctx.lineTo(cx + wingSpan + s * 0.3, this.y + s * 0.15);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
 
-    // Cockpit/canopy
-    ctx.fillStyle = detail;
-    ctx.fillRect(cx - 2, cy - s * 0.3, 4, s * 0.4);
+    // Fuselage with gradient nose-to-tail
+    const bodyGrad = ctx.createLinearGradient(cx, this.y, cx, this.y + this.height);
+    bodyGrad.addColorStop(0, pal.light);
+    bodyGrad.addColorStop(1, pal.dark);
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.moveTo(cx, this.y);
+    ctx.lineTo(cx + 3, cy - s * 0.2);
+    ctx.lineTo(cx + 2.5, this.y + this.height);
+    ctx.lineTo(cx - 2.5, this.y + this.height);
+    ctx.lineTo(cx - 3, cy - s * 0.2);
+    ctx.closePath();
+    ctx.fill();
+
+    // Glowing core (cockpit)
+    const pulse = 0.5 + 0.5 * Math.sin(t * 5 + this.x * 0.05);
+    ctx.save();
+    ctx.shadowColor = pal.glow;
+    ctx.shadowBlur = 5 + pulse * 3;
+    ctx.fillStyle = pal.core;
+    ctx.beginPath();
+    ctx.arc(cx, cy - s * 0.05, 2 + pulse * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Engine flare trail
+    const flareAlpha = 0.4 + flap * 0.4;
+    ctx.fillStyle = `rgba(255, 200, 120, ${flareAlpha})`;
+    ctx.fillRect(cx - 1.5, this.y + this.height - 1, 3, 3 + flap * 2);
   }
 }

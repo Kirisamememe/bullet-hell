@@ -64,6 +64,9 @@ export class Stage5 extends Stage {
       this.boss.setMovePath([{ x: 100, y: -80 }, { x: 100, y: 30 }]);
       this.boss.driftRange = 70;
       this.boss.driftSpeed = 8;
+      this.boss.palette = {
+        dark: '#3a2400', mid: '#cc8800', light: '#ffe066', core: '#ffffff', glow: '#ffcc00',
+      };
       this.boss.patterns = [
         new AimedShot(300, 5, Infinity),
         new CircleShot(1500, 4, 60),

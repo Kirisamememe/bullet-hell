@@ -56,7 +56,8 @@ export function checkPlayerCollisions(
  */
 export function checkEnemyCollisions(
   enemies: Enemy[],
-  playerBullets: Bullet[]
+  playerBullets: Bullet[],
+  onHit?: (x: number, y: number, enemy: Enemy) => void
 ): Enemy[] {
   const destroyed: Enemy[] = [];
   for (const bullet of playerBullets) {
@@ -64,8 +65,10 @@ export function checkEnemyCollisions(
     for (const enemy of enemies) {
       if (!enemy.active) continue;
       if (isEnemyHitByBullet(enemy, bullet)) {
+        const hitX = bullet.cx, hitY = bullet.cy;
         bullet.active = false;
         const dead = enemy.takeDamage(bullet.damage);
+        onHit?.(hitX, hitY, enemy);
         if (dead) {
           destroyed.push(enemy);
         }

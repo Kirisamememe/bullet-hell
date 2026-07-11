@@ -1,6 +1,7 @@
 import { CanvasManager, WIDTH, HEIGHT } from './Canvas';
 import { Input } from './Input';
 import { Player } from '../entities/Player';
+import { Enemy } from '../entities/Enemy';
 import { HUD } from '../ui/HUD';
 import { TitleScreen } from '../ui/TitleScreen';
 import { Stage } from '../stages/Stage';
@@ -13,6 +14,9 @@ import { drawPixelText } from '../render/sprites';
 import { Background } from '../render/Background';
 import { ParticleSystem } from '../render/Particles';
 import { checkPlayerCollisions, checkEnemyCollisions, checkGraze } from '../systems/Collision';
+import { soundManager } from '../audio/SoundManager';
+import { musicManager } from '../audio/MusicManager';
+import { TITLE_TRACK, STAGE_TRACK, BOSS_TRACK } from '../audio/tracks';
 
 const CHAR_W = 6;
 /** Center text of given length at given scale */
@@ -52,6 +56,7 @@ export class Game {
   // Entities
   player!: Player;
   currentStageInstance!: Stage;
+  private wasBossActive = false;
 
   // Stage intro / clear timers
   private transitionTimer = 0;
@@ -60,6 +65,15 @@ export class Game {
   // Bomb effect
   private bombFlash = 0;       // screen flash timer (ms)
   private bombRing = 0;        // expanding ring radius
+
+  // Big explosion (boss/midboss death) screen flash
+  private explosionFlash = 0;  // ms
+  private explosionFlashMax = 0;
+
+  // Screen shake
+  private shakeAmp = 0;        // px, current max amplitude
+  private shakeTimer = 0;      // ms remaining
+  private shakeDuration = 0;   // ms total (for decay ratio)
 
   constructor(canvas: CanvasManager) {
     this.canvas = canvas;
@@ -93,6 +107,15 @@ export class Game {
     }
   }
 
+  /** Adds screen shake. Keeps the strongest shake currently in effect. */
+  addScreenShake(amplitude: number, duration = 200): void {
+    if (amplitude >= this.shakeAmp || this.shakeTimer <= 0) {
+      this.shakeAmp = amplitude;
+      this.shakeDuration = duration;
+      this.shakeTimer = duration;
+    }
+  }
+
   start(): void {
     this.lastTime = performance.now();
     this.running = true;
@@ -120,17 +143,21 @@ export class Game {
       default: this.currentStageInstance = new Stage1(); break;
     }
     this.player = new Player();
+    this.wasBossActive = false;
     this.scene = Scene.StageIntro;
     this.transitionTimer = 2000;
+    musicManager.play('stage', STAGE_TRACK);
   }
 
   update(dt: number): void {
     const pausePressed = this.input.consumePause();
     if (pausePressed) {
       if (this.scene === Scene.Playing) {
+        soundManager.pause();
         this.scene = Scene.Paused;
         return;
       } else if (this.scene === Scene.Paused) {
+        soundManager.pause();
         this.scene = Scene.Playing;
         return;
       }
@@ -138,8 +165,10 @@ export class Game {
 
     switch (this.scene) {
       case Scene.Title:
+        musicManager.play('title', TITLE_TRACK);
         this.titleScreen.update(dt);
         if (this.input.consumeShot()) {
+          soundManager.menuConfirm();
           this.score = 0;
           this.lives = 3;
           this.bombs = 3;
@@ -183,18 +212,21 @@ export class Game {
           if (tap) {
             // Upper 65% of screen → continue, lower 35% → title
             if (tap.y < HEIGHT * 0.65) {
+              soundManager.menuConfirm();
               this.lives = 3;
               this.bombs = 3;
               this.power = 1;
               this.continueCount++;
               this.startStage(this.currentStage);
             } else {
+              soundManager.menuMove();
               this.saveHiScore();
               this.scene = Scene.Title;
             }
           } else {
             // Keyboard fallback
             if (this.input.consumeShot()) {
+              soundManager.menuConfirm();
               this.lives = 3;
               this.bombs = 3;
               this.power = 1;
@@ -202,6 +234,7 @@ export class Game {
               this.startStage(this.currentStage);
             }
             if (this.input.consumeBomb()) {
+              soundManager.menuMove();
               this.saveHiScore();
               this.scene = Scene.Title;
             }
@@ -220,6 +253,16 @@ export class Game {
     if (this.bombFlash > 0) {
       this.bombFlash -= dt;
       this.bombRing += dt * 0.8; // ring expands
+    }
+    // Big explosion (boss death) flash timer
+    if (this.explosionFlash > 0) {
+      this.explosionFlash -= dt;
+      if (this.explosionFlash < 0) this.explosionFlash = 0;
+    }
+    // Screen shake decay
+    if (this.shakeTimer > 0) {
+      this.shakeTimer -= dt;
+      if (this.shakeTimer < 0) this.shakeTimer = 0;
     }
 
     // Touch bomb button: tap in bottom-left corner triggers bomb
@@ -241,7 +284,11 @@ export class Game {
     // Player shooting
     if (this.input.state.shot || this.input.state.touchActive) {
       const newBullets = this.player.shoot(dt);
-      this.currentStageInstance.playerBullets.push(...newBullets);
+      if (newBullets.length > 0) {
+        this.currentStageInstance.playerBullets.push(...newBullets);
+        soundManager.playerShot();
+        this.particles.emit(this.player.cx, this.player.y - 2, 2, '#aef6ff', 1.2, 90, { glow: true, size: 1.5 });
+      }
     } else {
       this.player.shootTimer = 0;
     }
@@ -250,6 +297,7 @@ export class Game {
     if (this.input.consumeBomb() && this.bombs > 0) {
       this.bombs--;
       this.player.useBomb();
+      soundManager.bomb();
       // Clear all enemy bullets
       for (const b of this.currentStageInstance.enemyBullets) {
         b.active = false;
@@ -261,9 +309,11 @@ export class Game {
       // Spectacular effects
       this.bombFlash = 400;
       this.bombRing = 0;
-      this.particles.emit(180, 320, 60, '#ffffff', 8, 700);
-      this.particles.emit(180, 320, 40, '#ffcc44', 10, 500);
+      this.addScreenShake(9, 350);
+      this.particles.emit(180, 320, 60, '#ffffff', 8, 700, { glow: true });
+      this.particles.emit(180, 320, 40, '#ffcc44', 10, 500, { glow: true });
       this.particles.emit(180, 320, 20, '#ff6622', 12, 400);
+      this.particles.emitShockwave(180, 320, 220, '#ffffff', 600, 3);
     }
     // Reset touch bomb flag after processing
     this.input.state.bombButtonPressed = false;
@@ -274,14 +324,37 @@ export class Game {
     // Update stage
     this.currentStageInstance.update(dt, this.player);
 
+    // Boss / mid-boss appearance alert
+    if (this.currentStageInstance.isBossActive && !this.wasBossActive) {
+      soundManager.bossAlert();
+      musicManager.play('boss', BOSS_TRACK, 0.8);
+      this.addScreenShake(5, 300);
+    }
+    this.wasBossActive = this.currentStageInstance.isBossActive;
+
+    // Boss phase transitions (flag set by Enemy.checkPhase())
+    for (const enemy of this.currentStageInstance.enemies) {
+      if (enemy.phaseChangedFlag) {
+        enemy.phaseChangedFlag = false;
+        soundManager.phaseChange();
+        this.particles.emitShockwave(enemy.cx, enemy.cy, enemy.isBoss ? 100 : 60, '#ffffff', 450, 4);
+        this.addScreenShake(7, 250);
+      }
+    }
+
     // Collision: player vs enemy bullets
     if (checkPlayerCollisions(this.player, this.currentStageInstance.enemyBullets)) {
       if (this.player.hit()) {
         this.lives--;
-        this.particles.emit(this.player.cx, this.player.cy, 12, '#ff4444', 3, 500);
+        soundManager.playerHit();
+        this.particles.emit(this.player.cx, this.player.cy, 16, '#ff4444', 3, 500, { glow: true });
+        this.particles.emitShockwave(this.player.cx, this.player.cy, 36, '#ff6666', 350, 3);
+        this.addScreenShake(10, 320);
         if (this.lives < 0) {
           this.lives = 0;
           this.saveHiScore();
+          musicManager.stop(0.5);
+          soundManager.gameOver();
           this.scene = Scene.GameOver;
           this.transitionTimer = 1500;
           return;
@@ -294,20 +367,26 @@ export class Game {
       if (bullet.active && checkGraze(this.player, bullet)) {
         this.score += 100;
         this.hud.triggerGrazeFlash();
+        soundManager.graze();
       }
     }
 
-    // Collision: player bullets vs enemies
+    // Collision: player bullets vs enemies (onHit fires for every impact, including kills)
     const destroyed = checkEnemyCollisions(
       this.currentStageInstance.enemies,
-      this.currentStageInstance.playerBullets
+      this.currentStageInstance.playerBullets,
+      (hx, hy) => {
+        soundManager.enemyHit();
+        this.particles.emitSparks(hx, hy, 3, '#fff4cc', 5, 120);
+      }
     );
     for (const enemy of destroyed) {
       this.score += enemy.scoreValue;
-      this.particles.emit(enemy.cx, enemy.cy, enemy.isBoss ? 20 : 8,
-        enemy.isBoss ? '#ff6644' : '#ffaa44', enemy.isBoss ? 4 : 2);
+      this.onEnemyDestroyed(enemy);
       if (enemy.dropPowerItem && this.power < 5) {
         this.power++;
+        soundManager.powerUp();
+        this.particles.emit(enemy.cx, enemy.cy, 10, '#66ffee', 2, 400, { glow: true });
       }
     }
 
@@ -316,6 +395,8 @@ export class Game {
       this.score += this.bombs * 5000;
       this.score += this.lives * 10000;
       this.saveHiScore();
+      musicManager.stop(0.5);
+      soundManager.stageClear();
       this.scene = Scene.StageClear;
       this.stageClearTimer = 3000;
     }
@@ -327,12 +408,41 @@ export class Game {
     this.hud.update(dt);
   }
 
+  /** Spawns layered explosion VFX + sound when an enemy is destroyed. */
+  private onEnemyDestroyed(enemy: Enemy): void {
+    const pal = enemy.palette;
+    const isBig = enemy.isBoss || enemy.isMidBoss;
+
+    if (isBig) {
+      soundManager.bossDeath();
+      const core = pal?.core ?? '#ffffff';
+      const light = pal?.light ?? '#ffaa44';
+      const glow = pal?.glow ?? '#ff4422';
+      this.particles.emit(enemy.cx, enemy.cy, 50, core, 5, 750, { glow: true });
+      this.particles.emit(enemy.cx, enemy.cy, 35, light, 4, 600, { glow: true });
+      this.particles.emit(enemy.cx, enemy.cy, 22, glow, 3, 450);
+      this.particles.emitSparks(enemy.cx, enemy.cy, 16, '#ffffff', 20, 300);
+      this.particles.emitShockwave(enemy.cx, enemy.cy, enemy.isBoss ? 110 : 65, '#ffffff', 550, 4);
+      this.particles.emitShockwave(enemy.cx, enemy.cy, enemy.isBoss ? 75 : 45, glow, 700, 3);
+      this.addScreenShake(enemy.isBoss ? 15 : 9, enemy.isBoss ? 500 : 320);
+      this.explosionFlash = enemy.isBoss ? 280 : 160;
+      this.explosionFlashMax = this.explosionFlash;
+    } else {
+      soundManager.enemyDeath();
+      const light = pal?.light ?? '#ffaa44';
+      this.particles.emit(enemy.cx, enemy.cy, 14, light, 2.5, 380, { glow: true });
+      this.particles.emitSparks(enemy.cx, enemy.cy, 6, '#ffffff', 8, 200);
+      this.particles.emitShockwave(enemy.cx, enemy.cy, 24, light, 300, 2);
+      this.addScreenShake(2.5, 120);
+    }
+  }
+
   render(): void {
     const ctx = this.canvas.offscreenCtx;
 
-    // Clear
+    // Clear (slightly padded so screen-shake translation never reveals gaps)
     ctx.fillStyle = '#0a0a1a';
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    ctx.fillRect(-16, -16, WIDTH + 32, HEIGHT + 32);
 
     switch (this.scene) {
       case Scene.Title:
@@ -345,14 +455,14 @@ export class Game {
 
       case Scene.Playing:
       case Scene.Paused:
-        this.renderPlaying(ctx);
+        this.renderShaken(ctx, () => this.renderPlaying(ctx));
         if (this.scene === Scene.Paused) {
           this.renderPauseOverlay(ctx);
         }
         break;
 
       case Scene.StageClear:
-        this.renderPlaying(ctx);
+        this.renderShaken(ctx, () => this.renderPlaying(ctx));
         this.renderStageClearOverlay(ctx);
         break;
 
@@ -362,6 +472,21 @@ export class Game {
     }
 
     this.canvas.flip();
+  }
+
+  /** Runs a render callback offset by the current screen-shake amplitude. */
+  private renderShaken(ctx: CanvasRenderingContext2D, draw: () => void): void {
+    let sx = 0, sy = 0;
+    if (this.shakeTimer > 0 && this.shakeDuration > 0) {
+      const ratio = this.shakeTimer / this.shakeDuration;
+      const amp = this.shakeAmp * ratio;
+      sx = (Math.random() - 0.5) * 2 * amp;
+      sy = (Math.random() - 0.5) * 2 * amp;
+    }
+    ctx.save();
+    ctx.translate(sx, sy);
+    draw();
+    ctx.restore();
   }
 
   private renderStageIntro(ctx: CanvasRenderingContext2D): void {
@@ -433,6 +558,13 @@ export class Game {
     if (this.bombFlash > 0) {
       const alpha = (this.bombFlash / 400) * 0.5;
       ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    }
+
+    // Big explosion (boss/midboss death) screen flash overlay
+    if (this.explosionFlash > 0 && this.explosionFlashMax > 0) {
+      const alpha = (this.explosionFlash / this.explosionFlashMax) * 0.55;
+      ctx.fillStyle = `rgba(255, 240, 200, ${alpha})`;
       ctx.fillRect(0, 0, WIDTH, HEIGHT);
     }
 
